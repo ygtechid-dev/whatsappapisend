@@ -3,6 +3,7 @@ const pino = require('pino');
 const { createSticker, StickerTypes } = require('wa-sticker-formatter');
 const express = require('express');
 const bodyParser = require('body-parser');
+const qrcode = require('qrcode');
 
 const app = express();
 const port = 8080;
@@ -10,6 +11,7 @@ const port = 8080;
 app.use(bodyParser.json());
 
 let socket;
+let qrCodeData = "";
 
 async function connectWhatsapp() {
   const auth = await useMultiFileAuthState("session");
@@ -21,12 +23,15 @@ async function connectWhatsapp() {
   });
 
   socket.ev.on("creds.update", auth.saveCreds);
-  socket.ev.on("connection.update", async ({ connection }) => {
+  socket.ev.on("connection.update", async ({ connection, qr }) => {
     if (connection === "open") {
       console.log("BOT WHATSAPP SUDAH SIAP✅ -- BY YGTECH!");
+      qrCodeData = ""; // Clear QR code data after successful connection
     } else if (connection === "close") {
       console.log("Connection closed. Reconnecting...");
       await connectWhatsapp();
+    } else if (qr) {
+      qrCodeData = qr;
     }
   });
 
@@ -88,7 +93,6 @@ async function connectWhatsapp() {
 
 connectWhatsapp();
 
-const targetNumber = 
 // API endpoint to send message
 app.post('/sendMessage', async (req, res) => {
   const { remoteJid, text } = req.body;
@@ -110,6 +114,25 @@ app.post('/sendMessage', async (req, res) => {
   } catch (error) {
     console.error('Failed to send message:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Endpoint to serve the QR code page
+app.get('/qr', (req, res) => {
+  if (qrCodeData) {
+    qrcode.toDataURL(qrCodeData, (err, src) => {
+      if (err) res.send("Error generating QR code");
+      res.send(`
+        <html>
+          <body>
+            <h1>Scan this QR code with your WhatsApp</h1>
+            <img src="${src}" />
+          </body>
+        </html>
+      `);
+    });
+  } else {
+    res.send("QR code not available");
   }
 });
 
